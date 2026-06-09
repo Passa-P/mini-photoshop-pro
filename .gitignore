@@ -1,0 +1,4 @@
+MobileNetSSD_deploy.caffemodel
+MobileNetSSD_deploy.prototxt
+__pycache__/
+*.pyc

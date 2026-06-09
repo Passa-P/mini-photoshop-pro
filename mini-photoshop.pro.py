@@ -126,7 +126,7 @@ class DetectionThread(QThread):
                         continue
                     label_name = CLASSES[class_id]
 
-                    if label_name == self.target_object:
+                    if label_name == self.target_object or self.target_object == "__all__":
                         detected_count += 1
                         box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                         (startX, startY, endX, endY) = box.astype("int")
@@ -237,6 +237,8 @@ class MiniPhotoshopPro(QMainWindow):
 
         side_layout.addWidget(self._build_group_file())
         side_layout.addWidget(self._build_group_cnn())
+        # TAMBAHAN BAGIAN A
+        side_layout.addWidget(self._build_group_classifier())
         side_layout.addWidget(self._build_group_enhancement())
         side_layout.addWidget(self._build_group_color())
         side_layout.addWidget(self._build_group_segmentation())
@@ -356,6 +358,33 @@ class MiniPhotoshopPro(QMainWindow):
         btn_check.clicked.connect(self.check_model_files)
         ly.addWidget(btn_check)
 
+        gp.setLayout(ly)
+        return gp
+
+    # TAMBAHAN BAGIAN B
+    def _build_group_classifier(self):
+        gp = QGroupBox("🧠  CNN Image Classification (Custom)")
+        ly = QVBoxLayout()
+        
+        ly.addWidget(QLabel("Top-3 prediksi model custom:"))
+        self.lbl_clf_result = QLabel("Belum ada hasil.\nBuka gambar lalu klik Classify.")
+        self.lbl_clf_result.setWordWrap(True)
+        self.lbl_clf_result.setStyleSheet(
+            "background-color: #F9F5EB; padding: 10px;"
+            "border-radius: 4px; font-size: 11px; color: #333333;"
+            "border: 1px solid #E0D0B0;"
+        )
+        self.lbl_clf_result.setMinimumHeight(80)
+        ly.addWidget(self.lbl_clf_result)
+        
+        self.btn_classify = QPushButton("🔎  Classify Image (Custom CNN)")
+        self.btn_classify.setStyleSheet(
+            "background-color: #4A90D9; color: white;"
+            "font-weight: bold; padding: 9px;"
+        )
+        self.btn_classify.clicked.connect(self.apply_classification)
+        ly.addWidget(self.btn_classify)
+        
         gp.setLayout(ly)
         return gp
 
@@ -649,6 +678,57 @@ class MiniPhotoshopPro(QMainWindow):
             f"Terjadi kesalahan saat deteksi:\n\n{error_msg}\n\n"
             f"Pastikan koneksi internet aktif untuk mengunduh model."
         )
+
+    # TAMBAHAN BAGIAN C
+    def apply_classification(self):
+        if self.img_proc is None:
+            QMessageBox.warning(self, "Peringatan", "Buka gambar terlebih dahulu!")
+            return
+            
+        if not os.path.exists("model_custom.h5"):
+            QMessageBox.warning(self, "Model Tidak Ada",
+                "File model_custom.h5 tidak ditemukan.\n"
+                "Jalankan train_cnn_cifar.py terlebih dahulu!")
+            return
+            
+        try:
+            self.btn_classify.setEnabled(False)
+            self.btn_classify.setText("⏳  Memproses...")
+            self.set_status("Menjalankan klasifikasi CNN custom...")
+            QApplication.processEvents()
+            
+            from cnn_classifier import CNNClassifier
+            from PIL import Image as PILImage
+            
+            # Load model (sekali saja, simpan di instance)
+            if not hasattr(self, '_classifier') or self._classifier is None:
+                self._classifier = CNNClassifier("model_custom.h5", "class_names.txt")
+                
+            # Convert cv2 → PIL
+            rgb     = cv2.cvtColor(self.img_proc, cv2.COLOR_BGR2RGB)
+            pil_img = PILImage.fromarray(rgb)
+            
+            # Prediksi
+            results = self._classifier.predict(pil_img, top_k=3)
+            
+            # Tampilkan hasil
+            output = ""
+            for i, (label, conf) in enumerate(results, 1):
+                bar    = "█" * int(conf / 10)
+                output += f"{i}. {label.upper()}: {conf:.1f}%\n    {bar}\n"
+                
+            self.lbl_clf_result.setText(output.strip())
+            self.set_status(
+                f"Klasifikasi selesai: {results[0][0].upper()} "
+                f"({results[0][1]:.1f}% confidence)"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error Klasifikasi", f"Gagal:\n{str(e)}")
+            self.set_status("Error saat klasifikasi.")
+        finally:
+            self.btn_classify.setEnabled(True)
+            self.btn_classify.setText("🔎  Classify Image (Custom CNN)")
 
     # =====================================================================
     # PART 6: IMAGE PROCESSING ALGORITHMS

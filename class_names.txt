@@ -1,0 +1,4 @@
+automobile
+cat
+dog
+horse
